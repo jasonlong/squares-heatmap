@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NCAA Tournament Squares Heatmap (2015–2025)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #fff;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 32px;
+  }
+  .heatmap-container {
+    position: relative;
+    display: inline-block;
+  }
+  .axis-label {
+    position: absolute;
+    font-size: 13px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .axis-label.top {
+    top: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .axis-label.left {
+    left: -32px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    white-space: nowrap;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 36px repeat(10, 1fr);
+    grid-template-rows: 36px repeat(10, 1fr);
+    gap: 2px;
+  }
+  .corner { }
+  .col-header, .row-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: #999;
+  }
+  .cell {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: default;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .cell:hover {
+    transform: scale(1.08);
+    box-shadow: 0 0 16px rgba(255,255,255,0.15);
+    z-index: 2;
+  }
+  .cell .count {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .cell .pct {
+    font-size: 10px;
+    opacity: 0.8;
+    margin-top: 2px;
+  }
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 24px;
+    font-size: 12px;
+    color: #888;
+  }
+  .legend-bar {
+    width: 200px;
+    height: 12px;
+    border-radius: 6px;
+  }
+  .stats {
+    margin-top: 24px;
+    font-size: 13px;
+    color: #777;
+    text-align: center;
+    line-height: 1.8;
+  }
+  .stats strong { color: #ddd; }
+  .tooltip {
+    display: none;
+    position: fixed;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #ddd;
+    pointer-events: none;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<h1>NCAA Tournament Squares Heatmap</h1>
+<p class="subtitle">Last digit of each team's final score &middot; 2015–2025 (no 2020) &middot; All rounds</p>
+
+<div class="heatmap-container">
+  <div class="axis-label top">Winning Team's Last Digit</div>
+  <div class="axis-label left">Losing Team's Last Digit</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="legend">
+  <span>Fewer</span>
+  <canvas id="legendBar" class="legend-bar" width="200" height="12"></canvas>
+  <span>More</span>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// All NCAA tournament game scores 2015-2025 (excluding 2020)
+// Scraped from sports-reference.com — 669 games (67/yr, 66 in 2021)
+// Format: [higherScore, lowerScore]
+const games = [
+  // === 2015 === (67 games)
+  [56,55],[93,52],[66,65],[71,54],[57,55],[66,53],[69,60],[70,63],[79,67],[71,68],
+  [66,53],[72,66],[60,54],[75,65],[62,58],[76,70],[74,64],[79,56],[66,65],[68,62],
+  [65,62],[56,48],[69,65],[81,76],[75,56],[64,51],[69,59],[67,64],[78,65],[78,39],
+  [81,70],[68,66],[81,77],[85,56],[76,64],[57,50],[84,74],[60,59],[60,59],[83,52],
+  [86,76],[68,49],[75,64],[92,75],[87,68],[63,57],[74,62],[66,52],[94,90],[86,72],
+  [79,73],[56,53],[67,65],[76,57],[57,56],[75,72],[93,72],[72,65],[87,78],[75,67],
+  [73,58],[79,72],[68,60],[85,78],[81,61],[71,64],[68,63],
+  // === 2016 === (67 games)
+  [96,65],[67,62],[83,67],[70,69],[99,74],[85,57],[70,63],[70,56],[47,43],[71,53],
+  [85,66],[73,67],[76,75],[66,63],[101,86],[61,56],[88,74],[81,45],[71,61],[85,83],
+  [94,81],[68,52],[80,69],[70,51],[90,81],[77,69],[78,61],[82,59],[75,50],[84,71],
+  [63,60],[68,62],[70,50],[105,79],[74,67],[79,74],[77,66],[65,55],[79,72],[72,70],
+  [86,56],[73,61],[73,60],[65,57],[87,68],[79,63],[92,69],[64,59],[59,55],[91,52],
+  [78,76],[79,75],[93,85],[75,72],[92,65],[75,67],[82,68],[69,64],[71,64],[92,88],
+  [85,81],[82,68],[77,63],[80,68],[83,66],[95,51],[77,74],
+  // === 2017 === (67 games)
+  [67,66],[75,71],[76,56],[84,74],[76,71],[80,65],[66,65],[91,73],[93,73],[87,65],
+  [65,62],[65,39],[82,78],[88,81],[84,83],[70,50],[77,70],[67,63],[100,62],[78,58],
+  [84,73],[80,70],[84,72],[93,77],[92,91],[78,63],[90,70],[80,76],[75,72],[73,69],
+  [98,66],[69,68],[74,60],[95,88],[103,64],[77,71],[81,72],[76,64],[75,61],[97,80],
+  [64,58],[79,70],[72,65],[74,65],[79,67],[65,62],[92,80],[86,75],[75,73],[66,46],
+  [68,66],[60,58],[86,80],[76,65],[86,80],[85,77],[100,82],[79,73],[83,71],[91,66],
+  [69,60],[61,58],[73,71],[83,59],[77,73],[77,76],[71,65],
+  // === 2018 === (67 games)
+  [71,61],[65,58],[87,61],[86,83],[85,68],[81,75],[77,62],[70,60],[79,62],[74,48],
+  [81,58],[94,71],[69,66],[76,73],[90,78],[78,65],[71,59],[60,56],[76,60],[94,83],
+  [79,68],[62,58],[57,52],[82,78],[83,78],[89,67],[83,79],[84,53],[55,53],[87,62],
+  [80,76],[69,65],[85,81],[74,54],[69,59],[78,73],[89,68],[64,62],[73,47],[87,83],
+  [68,53],[50,43],[95,75],[63,62],[75,73],[61,58],[69,68],[78,62],[64,46],[102,83],
+  [67,54],[81,73],[68,64],[67,65],[61,47],[73,69],[84,66],[75,70],[90,84],[64,63],
+  [86,65],[75,60],[99,72],[58,54],[95,79],[69,57],[79,62],
+  // === 2019 === (67 games)
+  [78,74],[81,70],[85,62],[73,58],[80,76],[66,52],[79,77],[79,74],[86,76],[76,65],
+  [77,76],[67,58],[69,67],[70,50],[75,73],[80,63],[68,67],[88,73],[78,61],[78,77],
+  [87,53],[62,59],[84,55],[84,68],[79,44],[81,59],[89,75],[74,59],[62,56],[97,80],
+  [62,58],[77,71],[71,56],[95,72],[72,54],[70,64],[61,57],[61,48],[79,72],[77,70],
+  [63,51],[73,54],[87,61],[83,77],[53,49],[99,94],[80,75],[82,76],[74,65],[87,49],
+  [78,69],[83,64],[76,69],[91,74],[72,57],[70,61],[74,55],[83,71],[90,62],[78,58],
+  [64,49],[72,58],[63,44],[75,69],[61,51],[63,62],[85,77],
+  // === 2021 === (66 games)
+  [60,52],[86,80],[82,66],[76,61],[96,73],[64,54],[73,62],[53,52],[63,54],[68,55],
+  [86,78],[71,53],[67,47],[96,77],[76,58],[88,78],[51,49],[78,49],[71,60],[70,56],
+  [69,60],[78,62],[84,67],[60,56],[87,56],[71,58],[80,70],[75,72],[63,60],[65,58],
+  [62,46],[67,61],[79,55],[85,62],[73,63],[78,69],[65,53],[85,68],[75,70],[75,72],
+  [76,63],[84,61],[68,66],[81,78],[62,51],[72,70],[81,72],[54,53],[53,52],[98,55],
+  [72,68],[63,62],[62,58],[72,56],[93,84],[86,74],[87,71],[72,58],[85,51],[95,80],
+  [83,65],[82,68],[85,66],[93,90],[78,59],[86,70],
+  // === 2022 === (67 games)
+  [66,58],[85,49],[95,63],[82,53],[57,53],[81,73],[78,56],[92,87],[85,79],[93,86],
+  [72,56],[81,71],[70,60],[73,66],[67,64],[69,49],[76,67],[83,56],[72,69],[67,63],
+  [66,57],[59,54],[67,60],[68,66],[80,61],[79,72],[79,51],[54,49],[79,61],[66,61],
+  [70,56],[76,50],[93,82],[87,70],[69,42],[82,68],[54,53],[75,63],[88,56],[54,41],
+  [80,60],[85,80],[68,53],[76,68],[71,61],[72,60],[63,55],[50,44],[89,87],[93,72],
+  [64,53],[70,63],[75,71],[78,64],[97,62],[74,73],[78,61],[82,78],[53,48],[59,53],
+  [85,76],[74,68],[78,73],[78,69],[81,77],[81,65],[72,69],
+  // === 2023 === (67 games)
+  [84,61],[63,58],[66,65],[74,51],[58,55],[61,53],[77,65],[72,62],[78,61],[78,70],
+  [65,52],[75,69],[69,60],[62,55],[98,93],[79,76],[60,59],[63,52],[83,75],[63,56],
+  [71,60],[59,41],[72,67],[76,59],[81,61],[81,64],[85,69],[84,73],[71,66],[89,75],
+  [83,71],[88,81],[75,71],[96,75],[67,65],[63,57],[68,67],[72,63],[74,56],[76,65],
+  [59,55],[73,51],[75,52],[85,76],[78,63],[71,64],[86,75],[57,56],[98,73],[96,68],
+  [73,63],[63,51],[87,63],[72,70],[82,70],[75,67],[86,53],[72,71],[70,55],[84,81],
+  [68,63],[88,65],[79,76],[82,54],[72,71],[72,59],[76,59],
+  // === 2024 === (67 games)
+  [91,52],[77,65],[69,65],[78,76],[71,67],[85,69],[66,61],[82,65],[75,58],[85,57],
+  [89,63],[67,56],[82,52],[72,69],[77,52],[67,42],[88,81],[78,50],[88,72],[86,65],
+  [93,89],[87,73],[77,60],[56,44],[83,49],[106,67],[89,68],[86,73],[62,58],[80,68],
+  [82,75],[72,66],[60,53],[86,46],[98,83],[72,61],[64,47],[80,67],[80,76],[102,100],
+  [87,69],[100,95],[93,55],[79,73],[81,77],[54,51],[67,58],[76,64],[71,68],[90,62],
+  [69,51],[75,66],[109,96],[77,56],[92,67],[63,60],[85,65],[85,69],[72,61],[72,64],
+  [78,68],[89,87],[77,72],[89,82],[86,72],[63,50],[75,60],
+  // === 2025 === (67 games)
+  [83,72],[93,49],[75,72],[81,52],[93,65],[80,71],[85,66],[59,56],[90,81],[89,66],
+  [87,83],[91,89],[80,66],[100,93],[113,88],[85,65],[86,80],[78,40],[89,68],[69,67],
+  [75,63],[86,73],[76,57],[72,47],[77,62],[81,76],[76,62],[84,75],[67,58],[62,60],
+  [78,65],[69,50],[95,68],[70,68],[83,63],[89,75],[68,65],[80,71],[71,64],[82,55],
+  [75,66],[87,62],[82,70],[91,79],[91,78],[71,63],[78,65],[73,70],[70,64],[95,69],
+  [67,59],[78,70],[81,49],[67,57],[82,72],[79,72],[83,53],[77,75],[72,71],[77,64],
+  [75,66],[87,71],[85,83],[84,79],[70,67],[79,73],[65,63],
+];
+
+// Compute the 10x10 grid: grid[loserLastDigit][winnerLastDigit]
+const grid = Array.from({length: 10}, () => Array(10).fill(0));
+let totalGames = 0;
+
+games.forEach(([w, l]) => {
+  const wd = w % 10;
+  const ld = l % 10;
+  grid[ld][wd]++;
+  totalGames++;
+});
+
+const maxCount = Math.max(...grid.flat());
+const minCount = Math.min(...grid.flat());
+
+// Color scale: dark blue → cyan → yellow → orange → red
+function getColor(count) {
+  const t = maxCount === minCount ? 0.5 : (count - minCount) / (maxCount - minCount);
+
+  // Multi-stop gradient
+  let r, g, b;
+  if (t < 0.25) {
+    const s = t / 0.25;
+    r = Math.round(15 + s * 10);
+    g = Math.round(20 + s * 60);
+    b = Math.round(60 + s * 80);
+  } else if (t < 0.5) {
+    const s = (t - 0.25) / 0.25;
+    r = Math.round(25 + s * 30);
+    g = Math.round(80 + s * 100);
+    b = Math.round(140 - s * 40);
+  } else if (t < 0.75) {
+    const s = (t - 0.5) / 0.25;
+    r = Math.round(55 + s * 150);
+    g = Math.round(180 + s * 40);
+    b = Math.round(100 - s * 70);
+  } else {
+    const s = (t - 0.75) / 0.25;
+    r = Math.round(205 + s * 50);
+    g = Math.round(220 - s * 100);
+    b = Math.round(30 - s * 20);
+  }
+  return { r, g, b };
+}
+
+function colorStr(count) {
+  const { r, g, b } = getColor(count);
+  return `rgb(${r},${g},${b})`;
+}
+
+function textColor(count) {
+  const { r, g, b } = getColor(count);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  return lum > 140 ? '#000' : '#fff';
+}
+
+// Build grid
+const gridEl = document.getElementById('grid');
+
+// Corner
+gridEl.innerHTML = '<div class="corner"></div>';
+
+// Column headers (winner last digit)
+for (let c = 0; c < 10; c++) {
+  gridEl.innerHTML += `<div class="col-header">${c}</div>`;
+}
+
+// Rows
+for (let r = 0; r < 10; r++) {
+  gridEl.innerHTML += `<div class="row-header">${r}</div>`;
+  for (let c = 0; c < 10; c++) {
+    const count = grid[r][c];
+    const pct = ((count / totalGames) * 100).toFixed(1);
+    const bg = colorStr(count);
+    const fg = textColor(count);
+    gridEl.innerHTML += `
+      <div class="cell" style="background:${bg};color:${fg}"
+           data-row="${r}" data-col="${c}" data-count="${count}" data-pct="${pct}">
+        <span class="count">${count}</span>
+        <span class="pct">${pct}%</span>
+      </div>`;
+  }
+}
+
+// Legend gradient
+const canvas = document.getElementById('legendBar');
+const ctx = canvas.getContext('2d');
+for (let x = 0; x < 200; x++) {
+  const fakeCount = minCount + (x / 199) * (maxCount - minCount);
+  ctx.fillStyle = colorStr(fakeCount);
+  ctx.fillRect(x, 0, 1, 12);
+}
+
+// Stats
+const flat = grid.flat().map((v, i) => ({ r: Math.floor(i / 10), c: i % 10, v }));
+flat.sort((a, b) => b.v - a.v);
+const best = flat.slice(0, 5);
+const worst = flat.slice(-5).reverse();
+
+document.getElementById('stats').innerHTML = `
+  <strong>${totalGames}</strong> total games analyzed across 10 tournaments (2015–2025, no 2020)<br>
+  <br>
+  <strong>Best squares:</strong> ${best.map(s => `(${s.c},${s.r}) = ${s.v}`).join(' &middot; ')}<br>
+  <strong>Worst squares:</strong> ${worst.map(s => `(${s.c},${s.r}) = ${s.v}`).join(' &middot; ')}
+`;
+
+// Tooltip
+const tooltip = document.getElementById('tooltip');
+document.querySelectorAll('.cell').forEach(cell => {
+  cell.addEventListener('mouseenter', e => {
+    const r = cell.dataset.row;
+    const c = cell.dataset.col;
+    const count = cell.dataset.count;
+    const pct = cell.dataset.pct;
+    tooltip.innerHTML = `
+      <strong>Winner ends in ${c}, Loser ends in ${r}</strong><br>
+      ${count} games (${pct}% of all games)<br>
+      Rank: #${flat.findIndex(s => s.r == r && s.c == c) + 1} of 100
+    `;
+    tooltip.style.display = 'block';
+  });
+  cell.addEventListener('mousemove', e => {
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY + 14) + 'px';
+  });
+  cell.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+});
+</script>
+</body>
+</html>
